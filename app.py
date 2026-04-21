@@ -6,29 +6,63 @@ import hashlib, json, os
 
 st.set_page_config(page_title="DeepTrust AI", layout="wide")
 
-# ─── UI ───
+# ─── PREMIUM UI ───
 st.markdown("""
 <style>
+
+/* BACKGROUND */
 .stApp {
-    background: radial-gradient(circle at top, #020617, #0f172a);
-    color:white;
+    background: linear-gradient(to bottom right, #ffffff, #f8fafc);
+    color: #111827;
 }
+
+/* TITLE */
+h1, h2, h3 {
+    font-weight: 700;
+}
+
+/* CARD */
 .card {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.85);
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
     padding: 20px;
-    border-radius: 16px;
-    margin: 10px 0;
+    margin: 12px 0;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    transition: 0.3s;
 }
+.card:hover {
+    transform: translateY(-5px);
+}
+
+/* RESULT TEXT */
 .glow {
-    font-size: 2.2rem;
-    font-weight: bold;
-    color: #38bdf8;
-    text-shadow: 0 0 15px #0ea5e9;
+    font-size: 2.4rem;
+    font-weight: 800;
+    color: #2563eb;
+    text-align: center;
 }
+
+/* BUTTON */
+.stButton>button {
+    background: linear-gradient(135deg,#2563eb,#3b82f6);
+    color: white;
+    border-radius: 12px;
+    font-weight: 600;
+}
+.stButton>button:hover {
+    transform: scale(1.05);
+}
+
+/* SIDEBAR */
+section[data-testid="stSidebar"] {
+    background: #f1f5f9;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-# ─── USERS ───
+# ─── USER SYSTEM ───
 USER_FILE = "users.json"
 
 def load_users():
@@ -110,10 +144,8 @@ class Detector:
         b = min(blur / 150, 1)
 
         irregular = (t*0.35 + n*0.25 + e*0.25 + b*0.15)
-
         score = int((1 - irregular) * 100)
 
-        # face detection
         face = cv2.CascadeClassifier(
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         )
@@ -237,4 +269,4 @@ elif mode=="Dashboard":
         st.info("No data")
 
 st.markdown("---")
-st.caption("🚀 DeepTrust AI | Final Stable Version")
+st.caption("🚀 DeepTrust AI | Premium UI Version")
