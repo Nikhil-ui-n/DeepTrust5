@@ -31,8 +31,8 @@ st.markdown("""
 .glow {
     font-size: 2.5rem;
     font-weight: 900;
-    color: #60a5fa;
     text-align: center;
+    color: #60a5fa;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -59,7 +59,7 @@ if "logged" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# ─── LOGIN ───
+# ─── AUTH ───
 def login():
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
@@ -82,7 +82,7 @@ def signup():
         st.success("Account created")
 
 if not st.session_state.logged:
-    st.title("DeepTrust AI")
+    st.title("🛡️ DeepTrust AI")
     t1,t2 = st.tabs(["Login","Signup"])
     with t1: login()
     with t2: signup()
@@ -97,7 +97,7 @@ with st.sidebar:
 
 mode = st.sidebar.radio("Mode", ["Upload","Compare","Video","Dashboard"])
 
-st.title("DeepTrust AI")
+st.title("🛡️ DeepTrust AI")
 
 # ─── FEATURE EXTRACTION ───
 def extract_features(img):
@@ -106,8 +106,6 @@ def extract_features(img):
     texture = cv2.Laplacian(gray, cv2.CV_64F).var()
     noise = np.std(gray)
     edges = np.mean(cv2.Canny(gray,100,200))
-
-    # extra features (important improvement)
     brightness = np.mean(gray)
     contrast = gray.std()
 
@@ -133,19 +131,18 @@ class Detector:
     def analyze(self, img):
         features = extract_features(img)
 
-        pred = model.predict([features])[0]
         prob = model.predict_proba([features])[0]
 
-        confidence = int(max(prob)*100)
+        real_prob = prob[0]
+        fake_prob = prob[1]
 
-        # stability control
-        if confidence < 65:
-            return confidence, "Uncertain ⚠️"
-
-        if pred == 0:
-            return confidence, "Likely Real ✅"
+        # 🔥 FORCE DECISION
+        if fake_prob > real_prob:
+            confidence = int(fake_prob * 100)
+            return confidence, "Fake 🚨"
         else:
-            return confidence, "Likely Fake 🚨"
+            confidence = int(real_prob * 100)
+            return confidence, "Real ✅"
 
 detector = Detector()
 
@@ -168,9 +165,9 @@ if mode=="Upload":
             s,v = detector.analyze(img)
             st.session_state.history.append(s)
 
-            st.markdown(f"<div class='card'><div class='glow'>{v} ({s})</div></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card'><div class='glow'>{v} ({s}%)</div></div>", unsafe_allow_html=True)
 
-            st.subheader("Heatmap")
+            st.subheader("🔥 Heatmap")
             st.image(heatmap(img))
 
 # ─── COMPARE ───
@@ -190,8 +187,8 @@ elif mode=="Compare":
             s1,v1 = detector.analyze(img1)
             s2,v2 = detector.analyze(img2)
 
-            c1.write(v1, s1)
-            c2.write(v2, s2)
+            c1.markdown(f"<div class='card'>{v1} ({s1}%)</div>", unsafe_allow_html=True)
+            c2.markdown(f"<div class='card'>{v2} ({s2}%)</div>", unsafe_allow_html=True)
 
 # ─── VIDEO ───
 elif mode=="Video":
@@ -203,27 +200,29 @@ elif mode=="Video":
 
         cap = cv2.VideoCapture("temp.mp4")
         scores=[]
+        frames=0
 
         while cap.isOpened():
             ret,frame=cap.read()
             if not ret: break
 
-            s,_=detector.analyze(frame)
-            scores.append(s)
+            if frames%10==0:
+                s,_=detector.analyze(frame)
+                scores.append(s)
+
+            frames+=1
 
         cap.release()
 
         if scores:
             avg=int(np.mean(scores))
 
-            if avg>=70:
-                result="Likely Real ✅"
-            elif avg>=60:
-                result="Uncertain ⚠️"
+            if avg>=60:
+                result="Real ✅"
             else:
-                result="Likely Fake 🚨"
+                result="Fake 🚨"
 
-            st.markdown(f"<div class='card'><div class='glow'>{result} ({avg})</div></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card'><div class='glow'>{result} ({avg}%)</div></div>", unsafe_allow_html=True)
             st.line_chart(scores)
 
 # ─── DASHBOARD ───
@@ -232,8 +231,13 @@ elif mode=="Dashboard":
 
     if data:
         st.line_chart(data)
+
+        real=sum(1 for x in data if x>=60)
+        fake=sum(1 for x in data if x<60)
+
+        st.bar_chart({"Real":real,"Fake":fake})
     else:
-        st.info("No data")
+        st.info("No data yet")
 
 st.markdown("---")
-st.caption("DeepTrust AI | Final Accurate Version")
+st.caption("🚀 DeepTrust AI | Final Binary Detection Version")
