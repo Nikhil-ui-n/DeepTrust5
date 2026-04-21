@@ -3,11 +3,10 @@ import numpy as np
 import cv2
 from PIL import Image
 import hashlib, json, os
-from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(page_title="DeepTrust AI", layout="wide")
 
-# ─── UI STYLE ───
+# ─── UI ───
 st.markdown("""
 <style>
 .stApp {
@@ -21,7 +20,7 @@ st.markdown("""
     margin: 10px 0;
 }
 .glow {
-    font-size: 2rem;
+    font-size: 2.2rem;
     font-weight: bold;
     color: #38bdf8;
     text-shadow: 0 0 15px #0ea5e9;
@@ -29,7 +28,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── USER SYSTEM ───
+# ─── USERS ───
 USER_FILE = "users.json"
 
 def load_users():
@@ -83,68 +82,67 @@ if not st.session_state.logged:
     with t2: signup()
     st.stop()
 
-# ─── LOGOUT ───
+# ─── SIDEBAR ───
 with st.sidebar:
     st.write(f"👤 {st.session_state.user}")
     if st.button("Logout"):
         st.session_state.logged=False
         st.rerun()
 
+mode = st.sidebar.radio("Mode", ["Upload","Compare","Video","Dashboard"])
+
 st.title("🛡️ DeepTrust AI")
-
-# ─── FEATURE EXTRACTION ───
-def extract_features(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    texture = cv2.Laplacian(gray, cv2.CV_64F).var()
-    noise = np.std(gray)
-    edges = np.mean(cv2.Canny(gray,100,200))
-    return [texture, noise, edges]
-
-# ─── TRAIN MODEL INSIDE APP (LIGHTWEIGHT) ───
-@st.cache_resource
-def train_model():
-    # synthetic small dataset (hackathon safe)
-    X = [
-        [100, 20, 30], [120, 25, 35], [80, 15, 25],   # real
-        [300, 60, 80], [250, 55, 70], [280, 65, 90]   # fake
-    ]
-    y = [0,0,0, 1,1,1]
-
-    model = RandomForestClassifier(n_estimators=100)
-    model.fit(X, y)
-    return model
-
-model = train_model()
 
 # ─── DETECTOR ───
 class Detector:
     def analyze(self, img):
-        features = extract_features(img)
-        pred = model.predict([features])[0]
-        prob = model.predict_proba([features])[0]
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.equalizeHist(gray)
 
-        confidence = int(max(prob)*100)
+        texture = cv2.Laplacian(gray, cv2.CV_64F).var()
+        noise = np.std(gray)
+        edges = np.mean(cv2.Canny(gray,100,200))
+        blur = cv2.Laplacian(gray, cv2.CV_64F).var()
 
-        if confidence < 60:
-            return confidence, "Uncertain ⚠️"
+        t = min(texture / 180, 1)
+        n = min(noise / 70, 1)
+        e = min(edges / 120, 1)
+        b = min(blur / 150, 1)
 
-        if pred == 0:
-            return confidence, "Likely Real ✅"
+        irregular = (t*0.35 + n*0.25 + e*0.25 + b*0.15)
+
+        score = int((1 - irregular) * 100)
+
+        # face detection
+        face = cv2.CascadeClassifier(
+            cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        )
+        faces = face.detectMultiScale(gray, 1.3, 5)
+
+        if len(faces) == 0:
+            score = max(score, 70)
         else:
-            return confidence, "Likely Fake 🚨"
+            score += 5
+
+        score = max(45, min(score, 90))
+
+        if score >= 75:
+            v = "Likely Real ✅"
+        elif score >= 60:
+            v = "Uncertain ⚠️"
+        else:
+            v = "Likely Fake 🚨"
+
+        return score, v
 
 detector = Detector()
 
 # ─── HEATMAP ───
-def generate_heatmap(img):
+def heatmap(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray,100,200)
     heat = cv2.applyColorMap(edges, cv2.COLORMAP_JET)
     return cv2.addWeighted(img,0.6,heat,0.4,0)
-
-# ─── MODE ───
-mode = st.sidebar.radio("Mode",
-["Upload","Compare","Video","Dashboard"])
 
 # ─── IMAGE ───
 if mode=="Upload":
@@ -161,7 +159,7 @@ if mode=="Upload":
             st.markdown(f"<div class='card'><div class='glow'>{v} ({s})</div></div>", unsafe_allow_html=True)
 
             st.subheader("🔥 Heatmap")
-            st.image(generate_heatmap(img))
+            st.image(heatmap(img))
 
 # ─── COMPARE ───
 elif mode=="Compare":
@@ -209,15 +207,19 @@ elif mode=="Video":
 
         if scores:
             avg=int(np.mean(scores))
+            std=np.std(scores)
 
-            if avg>=70:
+            consistency = int((1 - min(std/50,1)) * 100)
+            final = int(avg * 0.7 + consistency * 0.3)
+
+            if final >= 75:
                 result="Likely Real ✅"
-            elif avg>=55:
+            elif final >= 60:
                 result="Uncertain ⚠️"
             else:
                 result="Likely Fake 🚨"
 
-            st.markdown(f"<div class='card'><div class='glow'>{result} ({avg})</div></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='card'><div class='glow'>{result} ({final})</div></div>", unsafe_allow_html=True)
             st.line_chart(scores)
 
 # ─── DASHBOARD ───
@@ -235,4 +237,4 @@ elif mode=="Dashboard":
         st.info("No data")
 
 st.markdown("---")
-st.caption("🚀 DeepTrust AI | All-in-One Version")
+st.caption("🚀 DeepTrust AI | Final Stable Version")
