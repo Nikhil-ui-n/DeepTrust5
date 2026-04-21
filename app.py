@@ -6,49 +6,77 @@ import hashlib, json, os
 
 st.set_page_config(page_title="DeepTrust AI", layout="wide")
 
-# ─── PREMIUM UI ───
+# ─── ULTRA ANIMATED UI ───
 st.markdown("""
 <style>
 
 /* BACKGROUND */
 .stApp {
-    background: linear-gradient(to bottom right, #ffffff, #f8fafc);
-    color: #111827;
+    background: linear-gradient(-45deg, #020617, #0f172a, #1e293b, #020617);
+    background-size: 400% 400%;
+    animation: gradientBG 15s ease infinite;
+    color: white;
 }
 
-/* TITLE */
-h1, h2, h3 {
-    font-weight: 700;
+/* Gradient animation */
+@keyframes gradientBG {
+    0% {background-position: 0% 50%;}
+    50% {background-position: 100% 50%;}
+    100% {background-position: 0% 50%;}
+}
+
+/* PARTICLES */
+.stApp::before {
+    content: "";
+    position: fixed;
+    width: 200%;
+    height: 200%;
+    top: -50%;
+    left: -50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: particlesMove 40s linear infinite;
+    z-index: 0;
+}
+
+@keyframes particlesMove {
+    0% {transform: translate(0,0);}
+    100% {transform: translate(200px,200px);}
 }
 
 /* CARD */
 .card {
-    background: rgba(255,255,255,0.85);
-    border: 1px solid #e5e7eb;
-    border-radius: 18px;
+    position: relative;
+    z-index: 1;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
     padding: 20px;
     margin: 12px 0;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     transition: 0.3s;
 }
 .card:hover {
-    transform: translateY(-5px);
+    transform: translateY(-6px);
 }
 
 /* RESULT TEXT */
 .glow {
-    font-size: 2.4rem;
-    font-weight: 800;
-    color: #2563eb;
+    font-size: 2.6rem;
+    font-weight: 900;
     text-align: center;
+    color: #60a5fa;
+    text-shadow: 0 0 15px rgba(96,165,250,0.7);
 }
 
 /* BUTTON */
 .stButton>button {
-    background: linear-gradient(135deg,#2563eb,#3b82f6);
+    background: linear-gradient(135deg,#3b82f6,#6366f1,#8b5cf6);
     color: white;
     border-radius: 12px;
     font-weight: 600;
+    transition: 0.3s;
 }
 .stButton>button:hover {
     transform: scale(1.05);
@@ -56,7 +84,7 @@ h1, h2, h3 {
 
 /* SIDEBAR */
 section[data-testid="stSidebar"] {
-    background: #f1f5f9;
+    background: rgba(2,6,23,0.95);
 }
 
 </style>
@@ -269,4 +297,4 @@ elif mode=="Dashboard":
         st.info("No data")
 
 st.markdown("---")
-st.caption("🚀 DeepTrust AI | Premium UI Version")
+st.caption("🚀 DeepTrust AI | Animated Premium Version")
