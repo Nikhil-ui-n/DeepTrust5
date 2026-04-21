@@ -2,103 +2,237 @@ import streamlit as st
 import numpy as np
 import cv2
 from PIL import Image
-import matplotlib.pyplot as plt
+import hashlib, json, os
+from sklearn.ensemble import RandomForestClassifier
 
 st.set_page_config(page_title="DeepTrust AI", layout="wide")
 
-# ---------- UI ----------
+# ─── UI STYLE ───
 st.markdown("""
 <style>
-body {
-    background: linear-gradient(135deg, #1f1c2c, #928dab);
+.stApp {
+    background: radial-gradient(circle at top, #020617, #0f172a);
+    color:white;
 }
-.big-title {
-    text-align: center;
-    font-size: 40px;
-    color: white;
+.card {
+    background: rgba(255,255,255,0.05);
+    padding: 20px;
+    border-radius: 16px;
+    margin: 10px 0;
+}
+.glow {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #38bdf8;
+    text-shadow: 0 0 15px #0ea5e9;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 class='big-title'>🔍 DeepTrust AI</h1>", unsafe_allow_html=True)
+# ─── USER SYSTEM ───
+USER_FILE = "users.json"
 
-# ---------- Sidebar ----------
-mode = st.sidebar.selectbox("Mode", ["Image Detection", "Compare Images"])
+def load_users():
+    if not os.path.exists(USER_FILE):
+        return {}
+    return json.load(open(USER_FILE))
 
-# ---------- FUNCTION ----------
-def analyze_image(image):
-    img = np.array(image)
+def save_users(u):
+    json.dump(u, open(USER_FILE,"w"))
+
+def hash_pass(p):
+    return hashlib.sha256(p.encode()).hexdigest()
+
+users = load_users()
+
+# ─── SESSION ───
+if "logged" not in st.session_state:
+    st.session_state.logged = False
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+# ─── AUTH ───
+def login():
+    st.subheader("🔐 Login")
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if u in users and users[u] == hash_pass(p):
+            st.session_state.logged = True
+            st.session_state.user = u
+            st.rerun()
+        else:
+            st.error("Invalid credentials")
+
+def signup():
+    st.subheader("📝 Signup")
+    u = st.text_input("New Username")
+    p = st.text_input("New Password", type="password")
+
+    if st.button("Create"):
+        users[u] = hash_pass(p)
+        save_users(users)
+        st.success("Account created")
+
+if not st.session_state.logged:
+    st.title("🛡️ DeepTrust AI")
+    t1,t2 = st.tabs(["Login","Signup"])
+    with t1: login()
+    with t2: signup()
+    st.stop()
+
+# ─── LOGOUT ───
+with st.sidebar:
+    st.write(f"👤 {st.session_state.user}")
+    if st.button("Logout"):
+        st.session_state.logged=False
+        st.rerun()
+
+st.title("🛡️ DeepTrust AI")
+
+# ─── FEATURE EXTRACTION ───
+def extract_features(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    texture = cv2.Laplacian(gray, cv2.CV_64F).var()
+    noise = np.std(gray)
+    edges = np.mean(cv2.Canny(gray,100,200))
+    return [texture, noise, edges]
 
-    # Feature extraction
-    edges = cv2.Canny(gray, 100, 200)
-    edge_score = np.mean(edges)
+# ─── TRAIN MODEL INSIDE APP (LIGHTWEIGHT) ───
+@st.cache_resource
+def train_model():
+    # synthetic small dataset (hackathon safe)
+    X = [
+        [100, 20, 30], [120, 25, 35], [80, 15, 25],   # real
+        [300, 60, 80], [250, 55, 70], [280, 65, 90]   # fake
+    ]
+    y = [0,0,0, 1,1,1]
 
-    noise = cv2.Laplacian(gray, cv2.CV_64F).var()
+    model = RandomForestClassifier(n_estimators=100)
+    model.fit(X, y)
+    return model
 
-    # Heuristic logic (tuned)
-    score = (edge_score * 0.6 + noise * 0.4)
+model = train_model()
 
-    if score > 50:
-        label = "FAKE"
-    else:
-        label = "REAL"
+# ─── DETECTOR ───
+class Detector:
+    def analyze(self, img):
+        features = extract_features(img)
+        pred = model.predict([features])[0]
+        prob = model.predict_proba([features])[0]
 
-    confidence = min(99, int(score))
+        confidence = int(max(prob)*100)
 
-    return label, confidence, edges
+        if confidence < 60:
+            return confidence, "Uncertain ⚠️"
 
-# ---------- IMAGE DETECTION ----------
-if mode == "Image Detection":
-    uploaded = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
+        if pred == 0:
+            return confidence, "Likely Real ✅"
+        else:
+            return confidence, "Likely Fake 🚨"
 
-    if uploaded:
-        image = Image.open(uploaded)
+detector = Detector()
 
-        col1, col2 = st.columns(2)
+# ─── HEATMAP ───
+def generate_heatmap(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray,100,200)
+    heat = cv2.applyColorMap(edges, cv2.COLORMAP_JET)
+    return cv2.addWeighted(img,0.6,heat,0.4,0)
 
-        with col1:
-            st.image(image, caption="Uploaded Image", use_column_width=True)
+# ─── MODE ───
+mode = st.sidebar.radio("Mode",
+["Upload","Compare","Video","Dashboard"])
 
-        label, conf, heatmap = analyze_image(image)
+# ─── IMAGE ───
+if mode=="Upload":
+    file = st.file_uploader("Upload Image", type=["jpg","png"])
 
-        with col2:
-            st.subheader("Result")
-            if label == "FAKE":
-                st.error(f"FAKE ❌ ({conf}%)")
+    if file:
+        img = cv2.cvtColor(np.array(Image.open(file)), cv2.COLOR_RGB2BGR)
+        st.image(file)
+
+        if st.button("Analyze"):
+            s,v = detector.analyze(img)
+            st.session_state.history.append(s)
+
+            st.markdown(f"<div class='card'><div class='glow'>{v} ({s})</div></div>", unsafe_allow_html=True)
+
+            st.subheader("🔥 Heatmap")
+            st.image(generate_heatmap(img))
+
+# ─── COMPARE ───
+elif mode=="Compare":
+    c1,c2 = st.columns(2)
+    f1 = c1.file_uploader("Image1", key="1")
+    f2 = c2.file_uploader("Image2", key="2")
+
+    if f1 and f2:
+        img1 = cv2.cvtColor(np.array(Image.open(f1)), cv2.COLOR_RGB2BGR)
+        img2 = cv2.cvtColor(np.array(Image.open(f2)), cv2.COLOR_RGB2BGR)
+
+        c1.image(f1)
+        c2.image(f2)
+
+        if st.button("Compare"):
+            s1,v1 = detector.analyze(img1)
+            s2,v2 = detector.analyze(img2)
+
+            c1.markdown(f"<div class='card'>{v1} ({s1})</div>", unsafe_allow_html=True)
+            c2.markdown(f"<div class='card'>{v2} ({s2})</div>", unsafe_allow_html=True)
+
+# ─── VIDEO ───
+elif mode=="Video":
+    video = st.file_uploader("Upload Video", type=["mp4"])
+
+    if video:
+        with open("temp.mp4","wb") as f:
+            f.write(video.read())
+
+        cap = cv2.VideoCapture("temp.mp4")
+        scores=[]
+        frames=0
+
+        while cap.isOpened():
+            ret,frame=cap.read()
+            if not ret: break
+
+            if frames%10==0:
+                s,_=detector.analyze(frame)
+                scores.append(s)
+
+            frames+=1
+
+        cap.release()
+
+        if scores:
+            avg=int(np.mean(scores))
+
+            if avg>=70:
+                result="Likely Real ✅"
+            elif avg>=55:
+                result="Uncertain ⚠️"
             else:
-                st.success(f"REAL ✅ ({conf}%)")
+                result="Likely Fake 🚨"
 
-            st.subheader("Heatmap")
-            fig, ax = plt.subplots()
-            ax.imshow(heatmap, cmap="hot")
-            ax.axis("off")
-            st.pyplot(fig)
+            st.markdown(f"<div class='card'><div class='glow'>{result} ({avg})</div></div>", unsafe_allow_html=True)
+            st.line_chart(scores)
 
-# ---------- COMPARE ----------
-if mode == "Compare Images":
-    img1 = st.file_uploader("Upload Image 1", key="1")
-    img2 = st.file_uploader("Upload Image 2", key="2")
+# ─── DASHBOARD ───
+elif mode=="Dashboard":
+    data = st.session_state.history
 
-    if img1 and img2:
-        image1 = Image.open(img1)
-        image2 = Image.open(img2)
+    if data:
+        st.line_chart(data)
 
-        col1, col2 = st.columns(2)
+        real=sum(1 for x in data if x>70)
+        fake=sum(1 for x in data if x<55)
 
-        with col1:
-            st.image(image1, caption="Image 1")
+        st.bar_chart({"Real":real,"Fake":fake})
+    else:
+        st.info("No data")
 
-        with col2:
-            st.image(image2, caption="Image 2")
-
-        label1, conf1, _ = analyze_image(image1)
-        label2, conf2, _ = analyze_image(image2)
-
-        st.write("### Comparison Result")
-        st.write(f"Image 1: {label1} ({conf1}%)")
-        st.write(f"Image 2: {label2} ({conf2}%)")
-
-# ---------- FOOTER ----------
 st.markdown("---")
-st.markdown("🚀 Built for Hackathon | DeepTrust AI")
+st.caption("🚀 DeepTrust AI | All-in-One Version")
